@@ -52,6 +52,9 @@
         .detail-box h4 { margin: 0 0 6px 0; font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; }
         .detail-box p { margin: 0 0 4px 0; font-size: 0.9rem; color: var(--text-main);}
         
+        .box-coincidencia { grid-column: 1 / -1; background-color: #fffbeb; border: 1px solid #fde68a; }
+        .box-coincidencia h4 { color: #d97706; }
+        
         .action-btns { display: flex; gap: 8px; flex-wrap: wrap; }
         .btn-editar { background: #3b82f6; }
         .btn-cerrar { background: #059669; }
@@ -151,7 +154,7 @@
     const clientsCol = collection(db, "clientes");
 
     window.allClients = [];
-    window.editingId = null; // Variable para saber si estamos editando
+    window.editingId = null; 
 
     // --- FUNCIONES DE BASE DE DATOS ---
 
@@ -173,10 +176,8 @@
 
         try {
             if (window.editingId) {
-                // Si estamos editando, actualizamos el documento existente
                 await updateDoc(doc(db, "clientes", window.editingId), payload);
             } else {
-                // Si es nuevo, agregamos campos de fecha y estado
                 payload.date = Date.now();
                 payload.status = 'activo';
                 await addDoc(clientsCol, payload);
@@ -207,7 +208,12 @@
     // --- LÓGICA DE INTERFAZ Y COINCIDENCIAS ---
 
     function calculateMatches() {
-        window.allClients.forEach(c => { c.matchComprador = false; c.matchVendedor = false; });
+        // Inicializamos los arreglos donde guardaremos los nombres de las coincidencias
+        window.allClients.forEach(c => { 
+            c.matchCompradorNombres = []; 
+            c.matchVendedorNombres = []; 
+        });
+        
         const activos = window.allClients.filter(c => c.status === 'activo');
         
         for (let i = 0; i < activos.length; i++) {
@@ -215,9 +221,11 @@
                 if (i !== j) {
                     const c1 = activos[i];
                     const c2 = activos[j];
+                    
+                    // Si c1 busca algo que c2 tiene
                     if (c1.auto_busca && c2.auto_tiene && c2.auto_tiene.toLowerCase().includes(c1.auto_busca.toLowerCase())) {
-                        c1.matchComprador = true; // El cliente 1 encontró lo que busca
-                        c2.matchVendedor = true;  // El cliente 2 tiene lo que el cliente 1 busca
+                        if (!c1.matchCompradorNombres.includes(c2.nombre)) c1.matchCompradorNombres.push(c2.nombre);
+                        if (!c2.matchVendedorNombres.includes(c1.nombre)) c2.matchVendedorNombres.push(c1.nombre);
                     }
                 }
             }
@@ -248,17 +256,30 @@
 
     function buildCard(c) {
         let matchTags = '';
-        if (c.matchComprador) matchTags += `<span class="tag tag-comprador">¡AUTO ENCONTRADO!</span> `;
-        if (c.matchVendedor) matchTags += `<span class="tag tag-vendedor">¡TIENE COMPRADOR!</span>`;
+        if (c.matchCompradorNombres.length > 0) matchTags += `<span class="tag tag-comprador">¡AUTO ENCONTRADO!</span> `;
+        if (c.matchVendedorNombres.length > 0) matchTags += `<span class="tag tag-vendedor">¡TIENE COMPRADOR!</span>`;
 
         let cardClass = '';
-        if (c.matchComprador) cardClass = 'match-comprador';
-        else if (c.matchVendedor) cardClass = 'match-vendedor';
+        if (c.matchCompradorNombres.length > 0) cardClass = 'match-comprador';
+        else if (c.matchVendedorNombres.length > 0) cardClass = 'match-vendedor';
 
         const nombreVendedor = c.origen === 'gabriel' ? 'GABRIEL' : 'MARIO';
         const origenTag = `<span class="tag tag-${c.origen}">${nombreVendedor}</span>`;
         const patenteTag = c.patente ? `<span class="patente">${c.patente}</span>` : '';
         const wpLink = c.telefono ? `https://wa.me/549${c.telefono}` : '#';
+        
+        // Generar la caja de coincidencias si existen
+        let cajaCoincidencias = '';
+        if (c.matchCompradorNombres.length > 0 || c.matchVendedorNombres.length > 0) {
+            cajaCoincidencias = `<div class="detail-box box-coincidencia"><h4>🤝 Coincidencias Detectadas</h4>`;
+            if (c.matchCompradorNombres.length > 0) {
+                cajaCoincidencias += `<p>✅ El auto que busca lo tiene: <strong>${c.matchCompradorNombres.join(', ')}</strong></p>`;
+            }
+            if (c.matchVendedorNombres.length > 0) {
+                cajaCoincidencias += `<p>💸 El auto que tiene lo busca: <strong>${c.matchVendedorNombres.join(', ')}</strong></p>`;
+            }
+            cajaCoincidencias += `</div>`;
+        }
         
         return `
         <div class="client-card origen-${c.origen} ${cardClass}">
@@ -277,6 +298,8 @@
             
             <div class="card-body" id="body-${c.id}">
                 <div class="detail-grid">
+                    ${cajaCoincidencias}
+                    
                     <div class="detail-box">
                         <h4>Contacto y Operación</h4>
                         <p>📞 <strong>${c.telefono || '-'}</strong></p>
@@ -315,10 +338,9 @@
     };
 
     window.openModal = (id = null) => {
-        window.editingId = id; // Guardamos el ID si estamos editando, o null si es nuevo
+        window.editingId = id; 
         
         if (id) {
-            // Si hay un ID, buscamos el cliente y llenamos el formulario
             const cliente = window.allClients.find(c => c.id === id);
             document.getElementById('modalTitle').innerText = 'Editar Cliente';
             document.getElementById('btnGuardar').innerText = 'Actualizar Cambios';
@@ -333,7 +355,6 @@
             document.getElementById('operacion').value = cliente.operacion || 'Efectivo + Usado';
             document.getElementById('presupuesto').value = cliente.presupuesto || '';
         } else {
-            // Si no hay ID, vaciamos el formulario
             document.getElementById('modalTitle').innerText = 'Cargar Nuevo Cliente';
             document.getElementById('btnGuardar').innerText = 'Guardar Cliente';
             document.querySelectorAll('#formModal input').forEach(i => i.value = '');
