@@ -205,10 +205,9 @@
         renderClients();
     });
 
-    // --- LÓGICA DE INTERFAZ Y COINCIDENCIAS ---
+    // --- LÓGICA DE INTERFAZ Y COINCIDENCIAS MEJORADA ---
 
     function calculateMatches() {
-        // Inicializamos los arreglos donde guardaremos los nombres de las coincidencias
         window.allClients.forEach(c => { 
             c.matchCompradorNombres = []; 
             c.matchVendedorNombres = []; 
@@ -219,13 +218,26 @@
         for (let i = 0; i < activos.length; i++) {
             for (let j = 0; j < activos.length; j++) {
                 if (i !== j) {
-                    const c1 = activos[i];
-                    const c2 = activos[j];
+                    const c1 = activos[i]; // El que busca
+                    const c2 = activos[j]; // El que tiene
                     
-                    // Si c1 busca algo que c2 tiene
-                    if (c1.auto_busca && c2.auto_tiene && c2.auto_tiene.toLowerCase().includes(c1.auto_busca.toLowerCase())) {
-                        if (!c1.matchCompradorNombres.includes(c2.nombre)) c1.matchCompradorNombres.push(c2.nombre);
-                        if (!c2.matchVendedorNombres.includes(c1.nombre)) c2.matchVendedorNombres.push(c1.nombre);
+                    if (c1.auto_busca && c2.auto_tiene) {
+                        const busqueda = c1.auto_busca.toLowerCase().trim();
+                        
+                        // Evitar falsos positivos con palabras de relleno o vacías
+                        if (busqueda === 'indefinido' || busqueda === 'efectivo' || busqueda === '') continue;
+
+                        // Separar la búsqueda en palabras sueltas
+                        const palabrasBuscadas = busqueda.split(/\s+/);
+                        const textoTiene = c2.auto_tiene.toLowerCase();
+                        
+                        // Chequear si TODAS las palabras buscadas están en el auto que el otro tiene (sin importar el orden)
+                        const hayCoincidencia = palabrasBuscadas.every(palabra => textoTiene.includes(palabra));
+
+                        if (hayCoincidencia) {
+                            if (!c1.matchCompradorNombres.includes(c2.nombre)) c1.matchCompradorNombres.push(c2.nombre);
+                            if (!c2.matchVendedorNombres.includes(c1.nombre)) c2.matchVendedorNombres.push(c1.nombre);
+                        }
                     }
                 }
             }
@@ -268,7 +280,6 @@
         const patenteTag = c.patente ? `<span class="patente">${c.patente}</span>` : '';
         const wpLink = c.telefono ? `https://wa.me/549${c.telefono}` : '#';
         
-        // Generar la caja de coincidencias si existen
         let cajaCoincidencias = '';
         if (c.matchCompradorNombres.length > 0 || c.matchVendedorNombres.length > 0) {
             cajaCoincidencias = `<div class="detail-box box-coincidencia"><h4>🤝 Coincidencias Detectadas</h4>`;
