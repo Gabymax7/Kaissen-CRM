@@ -7,7 +7,7 @@
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
         :root {
-            --gabriel: #1e40af; --mario: #047857; --match: #ea580c;
+            --gabriel: #1e40af; --mario: #047857; --match: #ea580c; --vendedor: #8b5cf6;
             --bg-gradient: linear-gradient(135deg, #f0f4f8 0%, #d9e2ec 100%);
             --card: #ffffff; --text-main: #102a43; --text-muted: #627d98; --alert: #e11d48;
         }
@@ -31,17 +31,20 @@
         .client-card { background: var(--card); border-radius: 8px; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); overflow: hidden; border-left: 6px solid #bcccdc; }
         .client-card.origen-gabriel { border-left-color: var(--gabriel); }
         .client-card.origen-mario { border-left-color: var(--mario); }
-        .client-card.match-true { border: 2px solid var(--match); border-left-width: 6px; }
+        .client-card.match-comprador { border: 2px solid var(--match); border-left-width: 6px; }
+        .client-card.match-vendedor { border: 2px solid var(--vendedor); border-left-width: 6px; }
         
         .card-header { padding: 12px 15px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; background: #fff; }
         .header-main { display: flex; gap: 10px; align-items: center; flex-wrap: wrap;}
         .tag { padding: 3px 8px; border-radius: 12px; font-size: 0.7rem; font-weight: 700; color: white; letter-spacing: 0.5px;}
         .tag-gabriel { background: var(--gabriel); }
         .tag-mario { background: var(--mario); }
-        .tag-match { background: var(--match); animation: pulse 2s infinite; }
+        .tag-comprador { background: var(--match); animation: pulseOrange 2s infinite; }
+        .tag-vendedor { background: var(--vendedor); animation: pulsePurple 2s infinite; }
         .patente { background: #334155; color: #fff; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 0.8rem; font-weight: bold;}
         
-        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(234, 88, 12, 0.4); } 70% { box-shadow: 0 0 0 6px rgba(234, 88, 12, 0); } 100% { box-shadow: 0 0 0 0 rgba(234, 88, 12, 0); } }
+        @keyframes pulseOrange { 0% { box-shadow: 0 0 0 0 rgba(234, 88, 12, 0.4); } 70% { box-shadow: 0 0 0 6px rgba(234, 88, 12, 0); } 100% { box-shadow: 0 0 0 0 rgba(234, 88, 12, 0); } }
+        @keyframes pulsePurple { 0% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.4); } 70% { box-shadow: 0 0 0 6px rgba(139, 92, 246, 0); } 100% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0); } }
 
         .card-body { padding: 15px; border-top: 1px solid #f0f4f8; display: none; background: #f8fafc; }
         .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 15px; }
@@ -50,6 +53,7 @@
         .detail-box p { margin: 0 0 4px 0; font-size: 0.9rem; color: var(--text-main);}
         
         .action-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+        .btn-editar { background: #3b82f6; }
         .btn-cerrar { background: #059669; }
         .btn-eliminar { background: #e11d48; }
         .btn-whatsapp { background: #25d366; color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; text-decoration: none; padding: 8px 12px; border-radius: 6px;}
@@ -83,7 +87,7 @@
 
 <div id="formModal">
     <div class="modal-content">
-        <h2>Cargar Nuevo Cliente</h2>
+        <h2 id="modalTitle">Cargar Nuevo Cliente</h2>
         
         <div class="form-group">
             <label>Vendedor (Origen)</label>
@@ -122,18 +126,16 @@
             </div>
         </div>
 
-        <button onclick="saveClient()" style="margin-top: 10px; padding: 12px;">Guardar Cliente</button>
+        <button onclick="saveClient()" id="btnGuardar" style="margin-top: 10px; padding: 12px;">Guardar Cliente</button>
         <button onclick="closeModal()" style="background:#627d98; padding: 12px;">Cancelar</button>
     </div>
 </div>
 
 <script type="module">
-    // Importaciones desde CDN (Obligatorio para HTML puro)
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, query, orderBy } 
     from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-    // Tu configuración de Firebase
     const firebaseConfig = {
         apiKey: "AIzaSyBoWnDUvHQSpg7U-KlwoCwN2ZGVVYlHfSA",
         authDomain: "kaissen-357b5.firebaseapp.com",
@@ -144,12 +146,12 @@
         measurementId: "G-20E9KKF39R"
     };
 
-    // Inicializar Firebase
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
     const clientsCol = collection(db, "clientes");
 
     window.allClients = [];
+    window.editingId = null; // Variable para saber si estamos editando
 
     // --- FUNCIONES DE BASE DE DATOS ---
 
@@ -167,12 +169,18 @@
             auto_busca: document.getElementById('auto_busca').value,
             operacion: document.getElementById('operacion').value,
             presupuesto: Number(document.getElementById('presupuesto').value || 0),
-            date: Date.now(),
-            status: 'activo'
         };
 
         try {
-            await addDoc(clientsCol, payload);
+            if (window.editingId) {
+                // Si estamos editando, actualizamos el documento existente
+                await updateDoc(doc(db, "clientes", window.editingId), payload);
+            } else {
+                // Si es nuevo, agregamos campos de fecha y estado
+                payload.date = Date.now();
+                payload.status = 'activo';
+                await addDoc(clientsCol, payload);
+            }
             closeModal();
         } catch (e) {
             alert("Error al guardar: " + e.message);
@@ -199,7 +207,7 @@
     // --- LÓGICA DE INTERFAZ Y COINCIDENCIAS ---
 
     function calculateMatches() {
-        window.allClients.forEach(c => c.hasMatch = false);
+        window.allClients.forEach(c => { c.matchComprador = false; c.matchVendedor = false; });
         const activos = window.allClients.filter(c => c.status === 'activo');
         
         for (let i = 0; i < activos.length; i++) {
@@ -208,8 +216,8 @@
                     const c1 = activos[i];
                     const c2 = activos[j];
                     if (c1.auto_busca && c2.auto_tiene && c2.auto_tiene.toLowerCase().includes(c1.auto_busca.toLowerCase())) {
-                        c1.hasMatch = true;
-                        c2.hasMatch = true;
+                        c1.matchComprador = true; // El cliente 1 encontró lo que busca
+                        c2.matchVendedor = true;  // El cliente 2 tiene lo que el cliente 1 busca
                     }
                 }
             }
@@ -239,18 +247,25 @@
     };
 
     function buildCard(c) {
-        const matchTag = c.hasMatch ? `<span class="tag tag-match">¡COINCIDENCIA!</span>` : '';
+        let matchTags = '';
+        if (c.matchComprador) matchTags += `<span class="tag tag-comprador">¡AUTO ENCONTRADO!</span> `;
+        if (c.matchVendedor) matchTags += `<span class="tag tag-vendedor">¡TIENE COMPRADOR!</span>`;
+
+        let cardClass = '';
+        if (c.matchComprador) cardClass = 'match-comprador';
+        else if (c.matchVendedor) cardClass = 'match-vendedor';
+
         const nombreVendedor = c.origen === 'gabriel' ? 'GABRIEL' : 'MARIO';
         const origenTag = `<span class="tag tag-${c.origen}">${nombreVendedor}</span>`;
         const patenteTag = c.patente ? `<span class="patente">${c.patente}</span>` : '';
         const wpLink = c.telefono ? `https://wa.me/549${c.telefono}` : '#';
         
         return `
-        <div class="client-card origen-${c.origen} ${c.hasMatch ? 'match-true' : ''}">
+        <div class="client-card origen-${c.origen} ${cardClass}">
             <div class="card-header" onclick="toggleCard('${c.id}')">
                 <div class="header-main">
                     <strong>${c.nombre}</strong>
-                    ${origenTag} ${matchTag}
+                    ${origenTag} ${matchTags}
                     <span style="color:var(--text-muted); font-size:0.85rem; display:block; width:100%;">
                         ${c.auto_tiene ? `Tiene: <strong>${c.auto_tiene}</strong> ${patenteTag}` : 'Solo busca'} ➡️ Busca: <strong>${c.auto_busca || 'Indefinido'}</strong>
                     </span>
@@ -278,6 +293,7 @@
                 </div>
                 
                 <div class="action-btns">
+                    <button class="btn-editar" onclick="openModal('${c.id}')">✏️ Editar</button>
                     ${c.status === 'activo' 
                         ? `<button class="btn-cerrar" onclick="changeStatus('${c.id}', 'cerrado')">✔ Marcar Cerrado</button>` 
                         : `<button onclick="changeStatus('${c.id}', 'activo')">↺ Reabrir</button>`}
@@ -298,9 +314,32 @@
         list.style.display = list.style.display === 'block' ? 'none' : 'block';
     };
 
-    window.openModal = () => {
+    window.openModal = (id = null) => {
+        window.editingId = id; // Guardamos el ID si estamos editando, o null si es nuevo
+        
+        if (id) {
+            // Si hay un ID, buscamos el cliente y llenamos el formulario
+            const cliente = window.allClients.find(c => c.id === id);
+            document.getElementById('modalTitle').innerText = 'Editar Cliente';
+            document.getElementById('btnGuardar').innerText = 'Actualizar Cambios';
+            
+            document.getElementById('origen').value = cliente.origen || 'gabriel';
+            document.getElementById('nombre').value = cliente.nombre || '';
+            document.getElementById('telefono').value = cliente.telefono || '';
+            document.getElementById('auto_tiene').value = cliente.auto_tiene || '';
+            document.getElementById('patente').value = cliente.patente || '';
+            document.getElementById('link_fotos').value = cliente.link_fotos || '';
+            document.getElementById('auto_busca').value = cliente.auto_busca || '';
+            document.getElementById('operacion').value = cliente.operacion || 'Efectivo + Usado';
+            document.getElementById('presupuesto').value = cliente.presupuesto || '';
+        } else {
+            // Si no hay ID, vaciamos el formulario
+            document.getElementById('modalTitle').innerText = 'Cargar Nuevo Cliente';
+            document.getElementById('btnGuardar').innerText = 'Guardar Cliente';
+            document.querySelectorAll('#formModal input').forEach(i => i.value = '');
+        }
+        
         document.getElementById('formModal').style.display = 'block';
-        document.querySelectorAll('#formModal input').forEach(i => i.value = '');
     };
     
     window.closeModal = () => document.getElementById('formModal').style.display = 'none';
